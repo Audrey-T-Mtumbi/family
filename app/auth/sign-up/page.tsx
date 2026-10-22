@@ -3,7 +3,8 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
+import { auth } from '@/lib/firebase'
+import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -17,31 +18,25 @@ export default function SignUpPage() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const router = useRouter()
-  const supabase = createClient()
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError(null)
 
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo:
-          process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL ||
-          `${window.location.origin}/dashboard`,
-        data: {
-          full_name: fullName,
-        },
-      },
-    })
-
-    if (error) {
-      setError(error.message)
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password)
+      await updateProfile(userCredential.user, { displayName: fullName })
+      router.push('/dashboard')
+    } catch (err: any) {
+      if (err.code === 'auth/email-already-in-use') {
+        setError('An account with this email already exists.')
+      } else if (err.code === 'auth/weak-password') {
+        setError('Password must be at least 6 characters.')
+      } else {
+        setError('Something went wrong. Please try again.')
+      }
       setLoading(false)
-    } else {
-      router.push('/auth/sign-up-success')
     }
   }
 
@@ -62,7 +57,7 @@ export default function SignUpPage() {
           <CardHeader className="text-center">
             <CardTitle className="font-serif text-2xl">Create Account</CardTitle>
             <CardDescription>
-              Join thousands of families preserving their stories
+              Join families preserving their stories
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -84,7 +79,7 @@ export default function SignUpPage() {
                   required
                 />
               </div>
-              
+
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
                 <Input

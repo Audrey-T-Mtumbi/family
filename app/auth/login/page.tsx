@@ -3,12 +3,17 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { createClient } from '@/lib/supabase/client'
+import { auth } from '@/lib/firebase'
+import { signInWithEmailAndPassword } from 'firebase/auth'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { TreesIcon as Tree, Loader2 } from 'lucide-react'
+
+const ALLOWED_EMAILS: string[] = [
+  'audreymtu83@gmail.com',
+]
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -16,24 +21,24 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const router = useRouter()
-  const supabase = createClient()
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError(null)
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
-
-    if (error) {
-      setError(error.message)
+    if (!ALLOWED_EMAILS.includes(email.toLowerCase().trim())) {
+      setError('Access denied. This is a private family application.')
       setLoading(false)
-    } else {
+      return
+    }
+
+    try {
+      await signInWithEmailAndPassword(auth, email, password)
       router.push('/dashboard')
-      router.refresh()
+    } catch (err: any) {
+      setError('Invalid email or password. Please try again.')
+      setLoading(false)
     }
   }
 
@@ -60,11 +65,11 @@ export default function LoginPage() {
           <CardContent>
             <form onSubmit={handleLogin} className="space-y-4">
               {error && (
-                <div className="p-3 text-sm text-destructive bg-destructive/10 rounded-md">
+                <div className="p-3 text-sm text-destructive bg-destructive/10 rounded-md border border-destructive/20">
                   {error}
                 </div>
               )}
-              
+
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
                 <Input
@@ -102,7 +107,7 @@ export default function LoginPage() {
             </form>
 
             <div className="mt-6 text-center text-sm">
-              <span className="text-muted-foreground">{"Don't have an account?"} </span>
+              <span className="text-muted-foreground">Don't have an account? </span>
               <Link href="/auth/sign-up" className="text-primary hover:underline font-medium">
                 Create one
               </Link>

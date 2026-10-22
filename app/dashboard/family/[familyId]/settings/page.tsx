@@ -1,73 +1,55 @@
-import { notFound, redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
-import { FamilySettingsForm } from '@/components/dashboard/family-settings-form'
+'use client'
 
-interface FamilySettingsPageProps {
-  params: Promise<{ familyId: string }>
-}
+import { useEffect, useState } from 'react'
+import { useParams, useRouter } from 'next/navigation'
+import { auth, db } from '@/lib/firebase'
+import { doc, getDoc } from 'firebase/firestore'
+import { onAuthStateChanged } from 'firebase/auth'
+import { FamilyTreeCanvas } from '@/components/family-tree/family-tree-canvas'
 
-export default async function FamilySettingsPage({ params }: FamilySettingsPageProps) {
-  const { familyId } = await params
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+export default function TreePage() {
+  const params = useParams()
+  const router = useRouter()
+  const familyId = params.familyId as string
+  const [family, setFamily] = useState<any>(null)
+  const [canEdit, setCanEdit] = useState(false)
+  const [loading, setLoading] = useState(true)
 
-  if (!user) return null
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (!user) { router.push('/auth/login'); return }
+      try {
+        const familyDoc = await getDoc(doc(db, 'families', familyId))
+        if (!familyDoc.exists()) { router.push('/dashboard'); return }
+        const familyData = familyDoc.data()
+        setFamily({ id: familyDoc.id, ...familyData })
+        const role = familyData.members?.[user.uid]?.role
+        setCanEdit(role === 'admin' || role === 'editor')
+      } catch {
+        router.push('/dashboard')
+      }
+      setLoading(false)
+    })
+    return () => unsubscribe()
+  }, [familyId])
 
-  // Check membership and role
-  const { data: membership } = await supabase
-    .from('family_members')
-    .select('role')
-    .eq('family_id', familyId)
-    .eq('user_id', user.id)
-    .single()
-
-  if (!membership || membership.role !== 'admin') {
-    redirect(`/dashboard/family/${familyId}`)
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-[calc(100vh-4rem)]" style={{ background: 'linear-gradient(135deg, #fdf6e3, #ede8d8)' }}>
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-amber-600"></div>
+      </div>
+    )
   }
-
-  // Fetch family details
-  const { data: family } = await supabase
-    .from('families')
-    .select('*')
-    .eq('id', familyId)
-    .single()
-
-  if (!family) {
-    notFound()
-  }
-
-  // Fetch members for management
-  const { data: members } = await supabase
-    .from('family_members')
-    .select(`
-      id,
-      role,
-      user_id,
-      profiles (
-        id,
-        full_name,
-        email,
-        avatar_url
-      )
-    `)
-    .eq('family_id', familyId)
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="max-w-2xl mx-auto">
-        <div className="mb-8">
-          <h1 className="text-3xl font-serif font-bold mb-2">Family Settings</h1>
-          <p className="text-muted-foreground">
-            Manage {family.name} settings and members
-          </p>
-        </div>
-
-        <FamilySettingsForm 
-          family={family} 
-          members={members || []}
-          currentUserId={user.id}
-        />
-      </div>
+    <div className="h-[calc(100vh-4rem)]">
+      <FamilyTreeCanvas
+        familyId={familyId}
+        familyName={family?.name || ''}
+        initialMembers={[]}
+        initialRelationships={[]}
+        canEdit={canEdit}
+      />
     </div>
   )
 }

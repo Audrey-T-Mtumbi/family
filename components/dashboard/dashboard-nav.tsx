@@ -1,11 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
+import { auth } from '@/lib/firebase'
+import { signOut, onAuthStateChanged } from 'firebase/auth'
 import { Button } from '@/components/ui/button'
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,16 +24,10 @@ import {
   Plus,
   ChevronDown,
 } from 'lucide-react'
-import type { User } from '@supabase/supabase-js'
 
 interface DashboardNavProps {
-  user: User
-  profile: {
-    id: string
-    full_name: string | null
-    avatar_url: string | null
-    email: string | null
-  } | null
+  user: any
+  profile: any
   families: Array<{
     id: string
     name: string
@@ -45,22 +40,27 @@ interface DashboardNavProps {
 export function DashboardNav({ user, profile, families }: DashboardNavProps) {
   const pathname = usePathname()
   const router = useRouter()
-  const supabase = createClient()
   const [signingOut, setSigningOut] = useState(false)
+  const [currentUser, setCurrentUser] = useState<any>(null)
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user)
+    })
+    return () => unsubscribe()
+  }, [])
 
   const handleSignOut = async () => {
     setSigningOut(true)
-    await supabase.auth.signOut()
+    await signOut(auth)
     router.push('/')
-    router.refresh()
   }
 
-  const getInitials = (name: string | null | undefined) => {
-    if (!name) return user.email?.charAt(0).toUpperCase() || 'U'
-    return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+  const getInitials = (email: string | null | undefined) => {
+    if (!email) return 'U'
+    return email.charAt(0).toUpperCase()
   }
 
-  // Get current family from URL
   const familyIdMatch = pathname.match(/\/dashboard\/family\/([^/]+)/)
   const currentFamilyId = familyIdMatch ? familyIdMatch[1] : null
   const currentFamily = families.find(f => f.id === currentFamilyId)
@@ -69,7 +69,6 @@ export function DashboardNav({ user, profile, families }: DashboardNavProps) {
     <header className="border-b bg-card sticky top-0 z-50">
       <div className="container mx-auto px-4">
         <div className="h-16 flex items-center justify-between">
-          {/* Logo & Family Selector */}
           <div className="flex items-center gap-6">
             <Link href="/dashboard" className="flex items-center gap-2">
               <Tree className="h-6 w-6 text-primary" />
@@ -113,7 +112,6 @@ export function DashboardNav({ user, profile, families }: DashboardNavProps) {
             )}
           </div>
 
-          {/* Navigation & User */}
           <div className="flex items-center gap-4">
             <nav className="hidden md:flex items-center gap-1">
               <Button
@@ -140,14 +138,12 @@ export function DashboardNav({ user, profile, families }: DashboardNavProps) {
               )}
             </nav>
 
-            {/* User Menu */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="relative h-9 w-9 rounded-full">
                   <Avatar className="h-9 w-9">
-                    <AvatarImage src={profile?.avatar_url || undefined} alt={profile?.full_name || 'User'} />
                     <AvatarFallback className="bg-primary/10 text-primary">
-                      {getInitials(profile?.full_name)}
+                      {getInitials(currentUser?.email)}
                     </AvatarFallback>
                   </Avatar>
                 </Button>
@@ -155,10 +151,7 @@ export function DashboardNav({ user, profile, families }: DashboardNavProps) {
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuLabel>
                   <div className="flex flex-col">
-                    <span>{profile?.full_name || 'User'}</span>
-                    <span className="text-xs text-muted-foreground font-normal">
-                      {user.email}
-                    </span>
+                    <span>{currentUser?.email || 'User'}</span>
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
@@ -169,8 +162,8 @@ export function DashboardNav({ user, profile, families }: DashboardNavProps) {
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem 
-                  onClick={handleSignOut} 
+                <DropdownMenuItem
+                  onClick={handleSignOut}
                   disabled={signingOut}
                   className="text-destructive focus:text-destructive cursor-pointer"
                 >
